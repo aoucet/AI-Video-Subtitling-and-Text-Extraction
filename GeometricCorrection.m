@@ -19,12 +19,19 @@ function [correctedROIs, info] = GeometricCorrection(frame, boxes, options)
 % options.Perspective.AspectRatio: optional known physical sign width/height.
 % Other Perspective settings pass through to estimateSignPerspective.
 % options.MaxOutputDimension: resource limit, default 4096 pixels per side.
+% options.ResolveVerticalOrientation: compare OCR evidence for the two
+% orientations of steep text lines by default. Set false to skip the check.
+% The check uses Computer Vision Toolbox when available, and preserves a
+% supplied physical top-left corner or a crop with inconclusive OCR evidence.
 %
 % Outputs retain input order/class. info.transform maps ORIGINAL frame XY
 % to output pixel XY; transformPointsInverse maps OCR locations back.
 % info.lineAngle is a measurement, NOT an extra rotation after homography.
 % It can be NaN when perspective is valid but angle estimation is uncertain.
-% Requires MATLAB R2022b+ and Image Processing Toolbox. No OCR is performed.
+% info.correctionAngle describes axial deskew. info.orientationRotation is
+% the additional 0 or 180 degrees already included in info.transform.
+% info.orientationScores contains scores for the base crop and its 180-degree
+% rotation, in that order. Requires MATLAB R2022b+ and Image Processing Toolbox.
 
 if nargin < 3, options = struct(); end
 validateattributes(frame, {'numeric','logical'}, ...
@@ -42,7 +49,7 @@ end
 if size(boxes,2) == 5 && any(isinf(boxes(:,5)))
     error('GeometricCorrection:Angle','An angle hint must be finite or NaN.');
 end
-[padding, angleOptions, perspectiveOptions, enabled, maxOutput] = settings(options);
+[padding, angleOptions, perspectiveOptions, enabled, maxOutput, resolveOrientation] = settings(options);
 if isfield(perspectiveOptions,'Corners') && iscell(perspectiveOptions.Corners) && ...
         numel(perspectiveOptions.Corners) ~= size(boxes,1)
     error('GeometricCorrection:Corners','Supply one corners cell per text box.');
@@ -117,9 +124,10 @@ for index = 1:size(boxes,1)
             bounds = [min(geometry.corners,[],1) max(geometry.corners,[],1)];
             signBox = [bounds(1:2)-2 bounds(3:4)-bounds(1:2)+4];
             [source,sourceOrigin] = cropOriginal(frame,signBox,0);
-            correctedROIs{index} = warpOriginal( ...
+            corrected = warpOriginal( ...
                 source,sourceOrigin,transform,outputSize,roi);
-            info(index) = setMapping(info(index),transform,outputSize);
+            [correctedROIs{index},info(index)] = finalizeOutput(corrected, ...
+                info(index),transform,outputSize,resolveOrientation,geometry.orientationAnchored);
             info(index).accepted = true;
             info(index).perspectiveAccepted = true;
             info(index).signCorners = geometry.corners;
@@ -149,8 +157,9 @@ for index = 1:size(boxes,1)
         info(index).reason = 'Rotation output exceeds the configured size limit.';
         continue;
     end
-    correctedROIs{index} = warpOriginal(roi,origin,transform,outputSize,roi);
-    info(index) = setMapping(info(index),transform,outputSize);
+    corrected = warpOriginal(roi,origin,transform,outputSize,roi);
+    [correctedROIs{index},info(index)] = finalizeOutput(corrected, ...
+        info(index),transform,outputSize,resolveOrientation,false);
     info(index).status = 'deskewed';
     info(index).resamplingPasses = 1;
 end
@@ -226,11 +235,68 @@ for channel = 1:size(roi,3)
 end
 end
 
-function value = setMapping(value,transform,outputSize)
+function [corrected,value] = finalizeOutput(corrected,value,transform,outputSize,resolveOrientation,anchored)
+if anchored
+    value.orientationStatus = 'supplied-corners';
+elseif resolveOrientation && abs(value.lineAngle) >= 45
+    [corrected,value.orientationRotation,value.orientationScores,value.orientationStatus] = ...
+        chooseOrientation(corrected);
+    if value.orientationRotation == 180
+        % A pixel at (x,y) moves to (width+1-x,height+1-y).
+        halfTurn = [-1 0 outputSize(2)+1; 0 -1 outputSize(1)+1; 0 0 1];
+        transform = projtform2d(halfTurn*transform.A);
+    end
+end
 value.transform = transform;
 value.outputReference = imref2d(outputSize);
 value.outputSizeHW = outputSize;
 value.outputTextPolygon = transformPointsForward(transform,value.sourcePolygon);
+end
+
+function [corrected,rotation,scores,status] = chooseOrientation(corrected)
+rotation = 0;
+scores = [NaN NaN];
+status = 'ocr-unavailable';
+if isempty(which('ocr')), return; end
+
+% Work in grayscale for OCR. A half-turn is pixel indexing and needs no warp.
+ocrImage = im2uint8(im2gray(corrected));
+try
+    base = ocr(ocrImage,'LayoutAnalysis','line');
+    reversed = ocr(ocrImage(end:-1:1,end:-1:1),'LayoutAnalysis','line');
+catch
+    % Geometry remains usable when the optional OCR engine cannot run.
+    return;
+end
+confidence = {textConfidence(base),textConfidence(reversed)};
+characterCounts = cellfun(@numel,confidence);
+targetCount = max(3,0.75*max(characterCounts));
+scores = [0 0];
+for index = 1:2
+    values = confidence{index};
+    count = characterCounts(index);
+    if count == 0, continue; end
+    % The weakest quarter helps distinguish a consistent read from plausible
+    % upside-down glyphs. Downweight reads much shorter than the alternative.
+    lowerTail = mean(mink(values,ceil(count/4)));
+    scores(index) = (0.5*mean(values)+0.5*lowerTail)*min(1,count/targetCount);
+end
+[~,best] = max(scores);
+status = 'ambiguous';
+if nnz(confidence{best} >= 0.55) < 2 || abs(diff(scores)) < 0.025
+    return;
+end
+status = 'ocr-selected';
+if best == 2
+    corrected = corrected(end:-1:1,end:-1:1,:);
+    rotation = 180;
+end
+end
+
+function confidence = textConfidence(result)
+confidence = double(result.CharacterConfidences(:));
+keep = isstrprop(result.Characters(:),'alphanum') & isfinite(confidence);
+confidence = confidence(keep);
 end
 
 function corners = boxCorners(box)
@@ -242,16 +308,21 @@ function matrix = translation(x,y)
 matrix = [1 0 x; 0 1 y; 0 0 1];
 end
 
-function [padding,angle,perspective,enabled,maxOutput] = settings(input)
+function [padding,angle,perspective,enabled,maxOutput,resolveOrientation] = settings(input)
 if ~isstruct(input) || ~isscalar(input)
     error('GeometricCorrection:Options','options must be a scalar struct.');
 end
 padding = 0.06;
 maxOutput = 4096;
+resolveOrientation = true;
 angle = struct();
 perspective = struct();
 if isfield(input,'PaddingFraction'), padding = input.PaddingFraction; input = rmfield(input,'PaddingFraction'); end
 if isfield(input,'MaxOutputDimension'), maxOutput = input.MaxOutputDimension; input = rmfield(input,'MaxOutputDimension'); end
+if isfield(input,'ResolveVerticalOrientation')
+    resolveOrientation = input.ResolveVerticalOrientation;
+    input = rmfield(input,'ResolveVerticalOrientation');
+end
 if isfield(input,'Angle'), angle = input.Angle; input = rmfield(input,'Angle'); end
 if isfield(input,'Perspective'), perspective = input.Perspective; input = rmfield(input,'Perspective'); end
 if ~isstruct(angle) || ~isscalar(angle) || ~isstruct(perspective) || ~isscalar(perspective)
@@ -272,11 +343,13 @@ end
 validateattributes(padding,{'numeric'},{'real','finite','scalar','>=',0,'<=',0.5});
 validateattributes(maxOutput,{'numeric'},{'real','finite','scalar','integer','>=',32,'<=',8192});
 validateattributes(enabled,{'logical'},{'scalar'});
+validateattributes(resolveOrientation,{'logical'},{'scalar'});
 end
 
 function value = emptyInfo()
 value = struct('sourceBox',[],'cropBox',[],'cropOriginXY',[], ...
     'accepted',false,'lineAngle',NaN,'correctionAngle',NaN, ...
+    'orientationRotation',0,'orientationScores',[NaN NaN],'orientationStatus','not-checked', ...
     'status','unchanged','reason','','outputSizeHW',[], ...
     'diagnostics',struct(),'perspectiveAccepted',false, ...
     'perspectiveDiagnostics',struct(),'signCorners',[], ...

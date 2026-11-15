@@ -17,8 +17,9 @@ function [lineAngle, diagnostics] = estimateROILineDirection(roi, options)
 % Quality measures are heuristics, NOT calibrated probabilities.
 % Requires Image Processing Toolbox, no OCR or Statistics Toolbox.
 % References: MathWorks ransac/adaptthresh and official Leptonica skew.c.
-% Single rotation does not rectify perspective or curved baselines. Angles
-% are AXIAL: no pixel-line geometry can distinguish upright from upside down.
+% The returned angle represents a line axis in [-90,90) degrees. With the
+% default MaxSkew of 90, the search continues across the vertical seam.
+% Either end of the axis can be the start of the text.
 
 if nargin < 2, options = struct(); end
 options = settings(options);
@@ -73,14 +74,15 @@ for maskIndex = 1:numel(masks)
     candidate.maskName = names{maskIndex};
     % Explicit output-size resizing can round X/Y scales differently. Return
     % directions in original ROI coordinates, not the resized pixel grid.
-    candidate.correctionAngle = originalAngle(candidate.correctionAngle,scaleXY);
+    scaledAngle = originalAngle(candidate.correctionAngle,scaleXY);
+    candidate.correctionAngle = 90-mod(90-scaledAngle,180);
     candidate.coarseAngle = originalAngle(candidate.coarseAngle,scaleXY);
     candidate.componentCueAngle = originalAngle(candidate.componentCueAngle,scaleXY);
     candidate.majorAxisAngle = originalAngle(candidate.majorAxisAngle,scaleXY);
     candidate.profileAngles = originalAngle(candidate.profileAngles,scaleXY);
     candidate.peakBounds = originalAngle(candidate.peakBounds,scaleXY);
     if numel(candidate.peakBounds) == 2
-        candidate.peakWidth = abs(diff(candidate.peakBounds));
+        candidate.peakWidth = axialDistance(candidate.peakBounds(1),candidate.peakBounds(2));
     end
     candidates(end+1,1) = candidate; %#ok<AGROW>
 end
@@ -248,8 +250,13 @@ if size(points,1) > options.MaxProjectionPoints
     points = points(indices,:);
 end
 % Search the whole permitted axis range, not +/-8 degrees around letters.
-coarseAngles = unique([-options.MaxSkew, ...
-    ceil(-options.MaxSkew):floor(options.MaxSkew),0,options.MaxSkew]);
+if options.MaxSkew == 90
+    % Keep the likely peak inside a continuous 180-degree search interval.
+    coarseAngles = round(geometry.angle)+(-89:90);
+else
+    coarseAngles = unique([-options.MaxSkew, ...
+        ceil(-options.MaxSkew):floor(options.MaxSkew),0,options.MaxSkew]);
+end
 coarseScores = projectionScores(points,coarseAngles);
 plausible = axialDistance(coarseAngles,geometry.angle) <= options.MaxAxisDisagreement;
 if ~any(plausible)
@@ -261,8 +268,7 @@ searchScores(~plausible) = -Inf;
 if peakIndex == 1 || peakIndex == numel(coarseAngles)
     reason = 'Whole-word direction is unresolved at the configured angle limit.'; return;
 end
-lower = max(-options.MaxSkew,coarseAngles(peakIndex)-1.25);
-upper = min(options.MaxSkew,coarseAngles(peakIndex)+1.25);
+[lower,upper] = refinementBounds(coarseAngles(peakIndex),1.25,options.MaxSkew);
 fineAngles = lower:options.FineStep:upper;
 fineScores = projectionScores(points,fineAngles);
 [finePeak,fineIndex] = max(fineScores);
@@ -385,8 +391,7 @@ end
 points = [double(columns) double(rows)];
 candidate.supportPoints = diagnosticPoints(points);
 points = points-mean(points,1);
-lower = max(-options.MaxSkew,fit.angle-options.RefinementRadius);
-upper = min(options.MaxSkew,fit.angle+options.RefinementRadius);
+[lower,upper] = refinementBounds(fit.angle,options.RefinementRadius,options.MaxSkew);
 coarseAngles = lower:0.5:upper;
 coarseScores = projectionScores(points,coarseAngles);
 [peak,peakIndex] = max(coarseScores);
@@ -530,6 +535,15 @@ for k = 1:numel(angles)
 end
 end
 
+function [lower,upper] = refinementBounds(angle,radius,maxSkew)
+lower = angle-radius;
+upper = angle+radius;
+if maxSkew < 90
+    lower = max(-maxSkew,lower);
+    upper = min(maxSkew,upper);
+end
+end
+
 function distance = axialDistance(first,second)
 % Text-line direction repeats after 180 degrees; it is not reading order.
 distance = abs(mod(first-second+90,180)-90);
@@ -559,7 +573,7 @@ for k = 1:numel(names)
     end
     options.(name) = input.(name);
 end
-validateattributes(options.MaxSkew,{'numeric'},{'scalar','real','finite','>',0,'<',90});
+validateattributes(options.MaxSkew,{'numeric'},{'scalar','real','finite','>',0,'<=',90});
 validateattributes(options.MaxDimension,{'numeric'},{'scalar','integer','>=',64});
 validateattributes(options.MinCharacters,{'numeric'},{'scalar','integer','>=',3});
 validateattributes(options.MinInlierFraction,{'numeric'},{'scalar','>',0,'<=',1});
@@ -592,7 +606,7 @@ end
 end
 
 function value = defaults()
-value = struct('MaxSkew',89.5,'MaxDimension',900,'MinCharacters',3, ...
+value = struct('MaxSkew',90,'MaxDimension',900,'MinCharacters',3, ...
     'MinInlierFraction',0.55,'RefinementRadius',8,'FineStep',0.05, ...
     'MinPeakRatio',1.12,'MaxMaskDisagreement',1.5, ...
     'OriginalSkewHint',NaN,'MaxHintDisagreement',5, ...

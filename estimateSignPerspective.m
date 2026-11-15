@@ -5,7 +5,8 @@ function [geometry, diagnostics] = estimateSignPerspective(frame, textBox, lineA
 % estimateROILineDirection (image y increases downward). No pixels are warped.
 % g.transform maps ORIGINAL frame XY to the full rectified sign. g.corners
 % are TL,TR,BR,BL relative to the automatic axis (or supplied physical TL
-% anchor). Automatic geometry does NOT establish semantic upright orientation.
+% anchor). g.orientationAnchored indicates whether the mapping uses a
+% supplied physical TL anchor. Automatic geometry leaves a 180-degree choice.
 %
 % Automatic mode uses Canny edges and Hough line SEGMENTS in a context crop.
 % Proposals are refit by robust orthogonal regression to nearby real Canny
@@ -114,6 +115,7 @@ if ~isempty(o.Corners)
     [geometry,fitInfo] = fitGeometry(q,o);
     diagnostics = recordFit(diagnostics,fitInfo);
     if geometry.accepted
+        geometry.orientationAnchored = true;
         diagnostics.accepted = true;
         diagnostics.reason = 'Validated supplied corners; pixel edge support was not required.';
     end
@@ -585,7 +587,7 @@ end
 
 function g=emptyGeometry()
 g=struct('accepted',false,'corners',zeros(0,2),'transform',[], ...
-    'outputSizeHW',[],'aspectRatioSource','');
+    'outputSizeHW',[],'aspectRatioSource','','orientationAnchored',false);
 end
 
 function d=emptyDiagnostics()
