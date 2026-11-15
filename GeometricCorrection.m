@@ -295,7 +295,7 @@ end
 
 function confidence = textConfidence(result)
 confidence = double(result.CharacterConfidences(:));
-keep = isstrprop(result.Characters(:),'alphanum') & isfinite(confidence);
+keep = isstrprop(result.Text(:),'alphanum') & isfinite(confidence);
 confidence = confidence(keep);
 end
 

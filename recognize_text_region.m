@@ -1,4 +1,5 @@
 function R = recognize_text_region(roi, templates, labels, opts)
+%RECOGNIZE_TEXT_REGION Read a text line and verify supported glyphs with NCC.
     if nargin < 4, opts = struct(); end
     nccThresh   = getOpt(opts, 'nccThresh',   0.60);
     fixOcrConf  = getOpt(opts, 'fixOcrConf',  0.50);
@@ -9,14 +10,16 @@ function R = recognize_text_region(roi, templates, labels, opts)
         roi = rgb2gray(roi);
     end
 
-    res = ocr(roi, 'CharacterSet', ['A':'Z', '0':'9'], 'LayoutAnalysis', 'line');
+    res = ocr(roi, 'LayoutAnalysis', 'line');
 
-    chars = res.Characters(:)';
+    % Text, character boxes and confidences share their original positions.
+    rawText = res.Text(:).';
     boxes = res.CharacterBoundingBoxes;
-    confs = res.CharacterConfidences(:)';
+    confs = res.CharacterConfidences(:).';
 
-    keep  = ~isspace(chars) & all(boxes(:, 3:4) > 0, 2)' & ~any(isnan(boxes), 2)';
-    chars = chars(keep);
+    validBoxes = all(isfinite(boxes), 2) & all(boxes(:, 3:4) > 0, 2);
+    keep = ismember(rawText, labels) & validBoxes.' & isfinite(confs);
+    chars = rawText(keep);
     boxes = boxes(keep, :);
     confs = confs(keep);
 
@@ -37,8 +40,10 @@ function R = recognize_text_region(roi, templates, labels, opts)
         end
     end
 
-    R.text          = strtrim(res.Text);
-    R.correctedText = rebuildText(R.text, chars, corrected);
+    correctedText = rawText;
+    correctedText(keep) = corrected;
+    R.text          = strtrim(rawText);
+    R.correctedText = strtrim(correctedText);
     R.chars         = chars;
     R.charBoxes     = boxes;
     R.ocrConf       = confs;
@@ -54,16 +59,4 @@ end
 
 function v = getOpt(s, name, default)
     if isfield(s, name), v = s.(name); else, v = default; end
-end
-
-function out = rebuildText(txt, orig, fixed)
-    out = txt;
-    j = 1;
-    for k = 1:numel(out)
-        if j > numel(orig), break; end
-        if ~isspace(out(k)) && out(k) == orig(j)
-            out(k) = fixed(j);
-            j = j + 1;
-        end
-    end
 end
