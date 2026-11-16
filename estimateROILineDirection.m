@@ -1,25 +1,7 @@
 function [lineAngle, diagnostics] = estimateROILineDirection(roi, options)
-%ESTIMATEROLINEDIRECTION Robust direction of a word/straight text line.
-% [angle, d] = estimateROILineDirection(roi)
-% angle is ORIGINAL skew: degrees, visually positive counterclockwise.
-% Apply -angle using imrotate to straighten ORIGINAL image pixels.
-% Rejection returns NaN with d.accepted=false and an explicit reason.
-%
-% Dark/bright adaptive and global masks -> whole-word broad-angle
-% differential projection, with an independent component-consensus cue when
-% separate glyphs exist. Connected writing does not require three blobs.
-% Projection uses pixel coordinates and linear bin splatting, avoiding
-% repeated image resampling. Image y increases downward: the correction
-% angle is atan2d(dy,dx), and the visually CCW original skew its negative.
-%
-% options: scalar struct; see defaults() for supported tuning values.
-% An optional OriginalSkewHint is validated against image evidence.
-% Quality measures are heuristics, NOT calibrated probabilities.
-% Requires Image Processing Toolbox, no OCR or Statistics Toolbox.
+%ESTIMATEROLINEDIRECTION Estimate the text axis, not reading direction.
+% Returns original skew in CCW degrees, or NaN on rejection.
 % References: MathWorks ransac/adaptthresh and official Leptonica skew.c.
-% The returned angle represents a line axis in [-90,90) degrees. With the
-% default MaxSkew of 90, the search continues across the vertical seam.
-% Either end of the axis can be the start of the text.
 
 if nargin < 2, options = struct(); end
 options = settings(options);
@@ -61,7 +43,6 @@ darkThreshold = adaptthresh(gray,0.45,'ForegroundPolarity','dark', ...
 brightThreshold = adaptthresh(gray,0.45,'ForegroundPolarity','bright', ...
     'NeighborhoodSize',[neighborhood neighborhood],'Statistic','gaussian');
 globalThreshold = graythresh(gray);
-% ForegroundPolarity changes thresholds, not the logical polarity itself.
 masks = {gray < darkThreshold, gray > brightThreshold, ...
          gray < globalThreshold, gray > globalThreshold};
 names = {'adaptive-dark','adaptive-bright','global-dark','global-bright'};
@@ -72,8 +53,7 @@ for maskIndex = 1:numel(masks)
     failureReasons{maskIndex} = reason;
     if ~candidate.accepted, continue; end
     candidate.maskName = names{maskIndex};
-    % Explicit output-size resizing can round X/Y scales differently. Return
-    % directions in original ROI coordinates, not the resized pixel grid.
+    % Map angles back to the original ROI.
     scaledAngle = originalAngle(candidate.correctionAngle,scaleXY);
     candidate.correctionAngle = 90-mod(90-scaledAngle,180);
     candidate.coarseAngle = originalAngle(candidate.coarseAngle,scaleXY);
@@ -93,7 +73,7 @@ if isempty(candidates)
     return;
 end
 
-% Comparable-quality masks that disagree mean ambiguity, not a vote to guess.
+% Reject conflicting mask estimates.
 [~,order] = sort([candidates.quality],'descend');
 best = candidates(order(1));
 competitive = candidates([candidates.quality] >= 0.65*best.quality);
@@ -128,7 +108,7 @@ diagnostics.profilePeakWidthDeg = best.peakWidth;
 diagnostics.profileAngles = best.profileAngles;
 diagnostics.profileScores = best.profileScores;
 diagnostics.maskAngles = -[candidates.correctionAngle];
-% Bounding-box origins, like pixel centres, carry a half-pixel offset.
+% Preserve the half-pixel offset.
 diagnostics.supportBoxes = best.supportBoxes;
 diagnostics.supportBoxes(:,1:2) = (best.supportBoxes(:,1:2)-0.5)./scaleXY+0.5;
 diagnostics.supportBoxes(:,3:4) = best.supportBoxes(:,3:4)./scaleXY;
@@ -146,8 +126,7 @@ diagnostics.orientationAmbiguous = true;
 end
 
 function [candidate, reason] = analyzeMask(mask, options)
-% The whole-word branch never uses MinCharacters. Connected letters remain
-% intact; only specks, clear border frames and filled background slabs leave.
+% Keep joined letters intact in the whole-word mask.
 [mask, geometry, reason] = cleanForeground(mask,options);
 candidate = emptyCandidate();
 if ~isempty(reason), return; end
@@ -174,9 +153,7 @@ if whole.accepted
     end
     reason = '';
 elseif component.accepted && ~whole.ambiguous
-    % Retain the established component path when a whole-mask estimate is
-    % unsupported (for example modest clutter), but never override a strong
-    % contradictory/ambiguous whole-word direction.
+    % Use component evidence when the whole-word estimate is weak.
     candidate = component;
     candidate.foregroundFraction = geometry.fraction;
     candidate.elongation = geometry.elongation;
@@ -249,9 +226,8 @@ if size(points,1) > options.MaxProjectionPoints
     indices = round(linspace(1,size(points,1),options.MaxProjectionPoints));
     points = points(indices,:);
 end
-% Search the whole permitted axis range, not +/-8 degrees around letters.
 if options.MaxSkew == 90
-    % Keep the likely peak inside a continuous 180-degree search interval.
+    % Search continuously across vertical.
     coarseAngles = round(geometry.angle)+(-89:90);
 else
     coarseAngles = unique([-options.MaxSkew, ...
@@ -298,8 +274,7 @@ if aspect < options.MinElongation || lengthValue < 20 || ...
         inkFill < options.MinInkFill || inkFill > 0.85
     reason = 'Whole-word support is too short, sparse, thick, or slab-like.'; return;
 end
-% A solid bar/frame is not evidence of a text line. Require some variation
-% along the ink pattern as well as a strong cross-line projection peak.
+% Reject bars with no variation along the line.
 alongBins = floor(along-min(along))+1;
 alongProfile = accumarray(alongBins,1);
 trim = floor(0.05*numel(alongProfile));
@@ -443,7 +418,6 @@ candidate.quality = candidate.inlierCount * ...
 end
 
 function [fit, valid] = consensusLine(centers,boxes,options)
-% Deterministic exhaustive two-point hypotheses for small candidate sets.
 count = size(centers,1);
 heights = boxes(:,4);
 typicalHeight = median(heights);
@@ -521,7 +495,7 @@ valid = true;
 end
 
 function scores = projectionScores(points,angles)
-% Differential projection normalized by ink mass, not changing image height.
+% Normalize row differences by ink mass.
 scores = zeros(size(angles));
 for k = 1:numel(angles)
     normalCoordinate = -points(:,1)*sind(angles(k)) + ...
@@ -545,7 +519,7 @@ end
 end
 
 function distance = axialDistance(first,second)
-% Text-line direction repeats after 180 degrees; it is not reading order.
+% Text axes repeat every 180 degrees.
 distance = abs(mod(first-second+90,180)-90);
 end
 
@@ -554,7 +528,7 @@ angle = atan2d(sind(angle)/scaleXY(2),cosd(angle)/scaleXY(1));
 end
 
 function points = diagnosticPoints(points)
-% Bounded deterministic sample of actual selected ink, never bbox corners.
+% Sample foreground pixels for diagnostics.
 if size(points,1) > 5000
     points = points(round(linspace(1,size(points,1),5000)),:);
 end

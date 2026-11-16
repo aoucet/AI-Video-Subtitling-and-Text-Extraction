@@ -1,43 +1,5 @@
 function [geometry, diagnostics] = estimateSignPerspective(frame, textBox, lineAngle, options)
-%ESTIMATESIGNPERSPECTIVE Seek a supported planar sign around detected text.
-% [g,d] = estimateSignPerspective(frame,[x y width height],lineAngle,opts)
-% lineAngle is the visually CCW text-axis angle, as returned by
-% estimateROILineDirection (image y increases downward). No pixels are warped.
-% g.transform maps ORIGINAL frame XY to the full rectified sign. g.corners
-% are TL,TR,BR,BL relative to the automatic axis (or supplied physical TL
-% anchor). g.orientationAnchored indicates whether the mapping uses a
-% supplied physical TL anchor. Automatic geometry leaves a 180-degree choice.
-%
-% Automatic mode uses Canny edges and Hough line SEGMENTS in a context crop.
-% Proposals are refit by robust orthogonal regression to nearby real Canny
-% pixels within their observed extent before intersecting the boundary lines.
-% Four independently supported enclosing boundary sides must be visible.
-% A text box, MSER cloud, or rotated bounding rectangle is never substituted
-% for a sign boundary. Missing/clipped/ambiguous geometry returns accepted=false.
-% Even a strong quadrilateral is geometric evidence, not proof of a sign or
-% of physical planarity. A single homography cannot flatten curved surfaces.
-%
-% opts.Corners: optional trusted 4-by-2 ORIGINAL XY vertices, starting at
-% the physical TL corner and following the perimeter: TL,TR,BR,BL (or the
-% reverse winding TL,BL,BR,TR). The first physical-width edge is therefore
-% defined even if lineAngle is unknown; supplied corners are not reoriented
-% to an uncertain text-axis prior. Bypasses automatic edge detection, but
-% geometry, containment, frame bounds, and transformation checks still apply.
-% opts.TextSupport: optional N-by-2 ORIGINAL XY foreground-text points
-% (12..25000). Prefer accepted detector/angle-estimator foreground support.
-% Containment, area gates, and text suppression then use actual foreground,
-% avoiding the inflated empty corners of a rotated axis-aligned word box.
-% Without TextSupport the box-based checks are deliberately conservative and
-% may reject a valid narrow tilted sign. Points must belong to this text ROI.
-% opts.AspectRatio: optional known target W/H. Without this, the target aspect
-% is estimated from observed side lengths; it is NOT metrically recovered.
-% With lineAngle=NaN, automatic search uses a documented horizontal-axis
-% prior limited by MaxLineAngleDeviation, not a measured text direction.
-% ContextScale grows each side by (ContextScale-1)*longestTextSide/2;
-% this isotropic context preserves sign boundaries around slender word ROIs.
-% See defaultOptions for all strict, case-sensitive option names.
-% Requires Image Processing Toolbox; compatible with MATLAB R2026a.
-% References: MathWorks hough/houghlines/fitgeotform2d documentation.
+%ESTIMATESIGNPERSPECTIVE Fit a homography from supported sign corners.
 
 if nargin < 4, options = struct(); end
 o = parseOptions(options);
@@ -138,10 +100,8 @@ analysisScale = min(1,o.MaxAnalysisDimension/max(size(crop)));
 if analysisScale<1
     crop=imresize(crop,max(1,ceil(size(crop)*analysisScale)),'bilinear');
 end
-% Explicit centre-coordinate mapping avoids half-pixel resize offsets.
+% Map pixel centers between scales.
 scaleXY = [size(crop,2)/(x2-x1+1),size(crop,1)/(y2-y1+1)];
-% Explicit target dimensions can give slightly different x/y scale factors.
-% Transform BOTH original guide directions into the analysis image.
 analysisU=u.*scaleXY; analysisU=analysisU/norm(analysisU);
 analysisN=n.*scaleXY; analysisN=analysisN/norm(analysisN);
 origin = [x1 y1];
@@ -162,7 +122,7 @@ edges = edge(crop,'Canny',[],1.2);
 if nnz(edges)<40
     diagnostics.reason = 'Too few boundary edge pixels.'; return;
 end
-% Suppress text only while proposing lines. Verification uses all real edges.
+% Mask text for line proposals only.
 proposalEdges = edges;
 if ~isempty(supportLocal)
     points=round(supportLocal);
@@ -182,12 +142,9 @@ end
 if max(H(:))<10
     diagnostics.reason = 'No sufficiently long boundary line evidence.'; return;
 end
-% A long thin word can create a large isotropic context. Its sign's short
-% sides must not be discarded by a context-only minimum-length threshold.
+% Keep short sign edges eligible.
 minimumProposalLength=max(o.MinSideLength,min(0.10*min(size(crop)), ...
     0.60*max(1,min(textSpans))));
-% Likewise, a peak threshold proportional only to the longest boundary
-% would suppress the short sides of a high-aspect-ratio rectangular sign.
 peakThreshold=max(10,ceil(min(0.20*max(H(:)),0.80*minimumProposalLength)));
 peaks = houghpeaks(H,o.MaxHoughPeaks,'Threshold',peakThreshold);
 proposals = houghlines(proposalEdges,T,R,peaks, ...
@@ -209,7 +166,7 @@ D = bwdist(edges);
 candidates = repmat(struct('q',[],'score',0,'support',[], ...
     'endpointCoverage',[],'textCoverage',0),0,1);
 trials = 0;
-% groups are top,right,bottom,left in the plane-axis coordinate system.
+% Group sign edges as top, right, bottom, left.
 for it=1:numel(groups{1})
  for ir=1:numel(groups{2})
   for ib=1:numel(groups{3})
@@ -257,7 +214,7 @@ diagnostics.endpointCoverage=best.endpointCoverage;
 diagnostics.textCoverage=best.textCoverage;
 diagnostics.bestScore=best.score;
 diagnostics.candidateCorners=toFrame(best.q);
-% Near-identical inner/outer edge responses count as one geometric solution.
+% Merge near-identical sign outlines.
 for k=2:numel(rank)
     rival=candidates(rank(k));
     if quadDifference(best.q,rival.q)>o.DuplicateQuadTolerance
@@ -285,9 +242,7 @@ end
 end
 
 function segments=refineBoundarySegments(proposals,edges,u,n,o)
-% Enumerate a narrow integer-pixel strip, rather than scanning the whole
-% image for every proposal. At most 9*longestImageSide candidate pixels are
-% inspected per segment; at most 2500 deterministic samples enter each SVD.
+% Sample only near each proposed segment.
 segments=repmat(struct('point1',[],'point2',[],'abc',[], ...
     'supportCount',0,'medianResidual',NaN),0,1);
 for k=1:numel(proposals)
@@ -342,8 +297,7 @@ for k=1:numel(proposals)
         p=p(keep,:);
     end
     if ~valid, continue; end
-    % Refit once after trimming; endpoints are projections of OBSERVED
-    % support extrema, not intersections or invented line extensions.
+    % Refit using trimmed, observed edge points.
     centre=mean(p,1); [~,S,V]=svd(p-centre,0);
     direction=V(:,1).';
     if dot(direction,originalDirection)<0, direction=-direction; end
@@ -427,7 +381,7 @@ maxGap=max(zeroRun)/numel(supported);
 s=(line.points-a)*direction.';
 segmentCoverage=max(0,min(lengthSide,max(s))-max(0,min(s)))/lengthSide;
 extrapolation=max([0,-min(s),max(s)-lengthSide]);
-% Also constrain inferred corners that lie far outside the observed segment.
+% Limit extrapolation beyond observed edges.
 missingEnd=max([max(0,min(s)),max(0,lengthSide-max(s))])/lengthSide;
 ok=fraction>=o.MinEdgeSupport && maxGap<=o.MaxUnsupportedFraction && ...
     segmentCoverage>=o.MinSegmentCoverage && missingEnd<=o.MaxEndpointExtension && ...
@@ -442,8 +396,7 @@ edges=q([2 3 4 1],:)-q;
 lengths=sqrt(sum(edges.^2,2));
 crosses=edges(:,1).*edges([2 3 4 1],2)-edges(:,2).*edges([2 3 4 1],1);
 if min(lengths)<o.MinSideLength || ~(all(crosses>1e-6)||all(crosses<-1e-6)), return; end
-% Supplied vertices may lie on image pixel-cell boundaries. Automatic
-% candidates require an actual positive margin and must not touch the crop.
+% Automatic corners need a positive crop margin.
 if margin==0
     outside=any(q(:,1)<0.5 | q(:,1)>imageHW(2)+0.5 | ...
         q(:,2)<0.5 | q(:,2)>imageHW(1)+0.5);
@@ -468,7 +421,7 @@ ok=true; reason='';
 end
 
 function q=orientSuppliedQuad(q)
-% Preserve the supplied physical TL anchor; normalize winding only.
+% Keep the supplied top-left corner fixed.
 signedArea=sum(q(:,1).*q([2 3 4 1],2)-q([2 3 4 1],1).*q(:,2));
 if signedArea<0, q=q([1 4 3 2],:); end
 end
@@ -491,8 +444,7 @@ if isempty(support)
 else
     projected=support*[u;n].';
     spans=max(projected,[],1)-min(projected,[],1);
-    % The footprint of supplied text evidence is rotation invariant. A
-    % convex hull includes the spaces between glyphs, unlike raw ink area.
+    % Use the text hull to include spaces between letters.
     if rank(support-mean(support,1))>=2
         hull=convhull(support(:,1),support(:,2));
         area=polyarea(support(hull,1),support(hull,2));
@@ -527,7 +479,7 @@ if min(hw)<o.MinOutputDimension
     info.reason='Rectified sign would have an unusably small output dimension.'; return;
 end
 dst=[1 1;hw(2) 1;hw(2) hw(1);1 hw(1)];
-% Check conditioning in centred/scaled coordinates, not raw pixel positions.
+% Check conditioning in normalized coordinates.
 Ts=normalizer(q); Td=normalizer(dst);
 qn=applyMatrix(Ts,q); dn=applyMatrix(Td,dst);
 A=zeros(8,9);

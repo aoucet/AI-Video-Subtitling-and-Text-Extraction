@@ -1,37 +1,5 @@
 function [correctedROIs, info] = GeometricCorrection(frame, boxes, options)
-%GEOMETRICCORRECTION Deskew and rectify planar sign text before OCR/NCC.
-% [patches, info] = GeometricCorrection(originalFrame, boxes, options)
-% boxes: N-by-4 [x y width height], ORIGINAL frame coordinates. Each box
-% contains one word or one straight line, already grouped by detection.
-% Optional column 5: original skew (degrees, visually positive CCW).
-%
-% Estimate direction from character and whole-word evidence, then seek a
-% supported sign boundary in the original frame. The sign homography already
-% includes rotation: do NOT add the measured skew a second time. Sample
-% original pixels at most ONCE. Uncertain perspective -> supported rotation;
-% uncertain angle AND perspective -> unchanged crop, accepted=false.
-%
-% options.PaddingFraction: margin, default 0.06.
-% options.Angle: estimateROILineDirection settings (old flat settings work).
-% options.Perspective.Enabled: true by default; false for deskew only.
-% options.Perspective.Corners: optional true [TL;TR;BR;BL] ORIGINAL XY, as
-% 4-by-2 shared-sign corners or an N-cell array ([] means automatic search).
-% options.Perspective.AspectRatio: optional known physical sign width/height.
-% Other Perspective settings pass through to estimateSignPerspective.
-% options.MaxOutputDimension: resource limit, default 4096 pixels per side.
-% options.ResolveVerticalOrientation: compare OCR evidence for the two
-% orientations of steep text lines by default. Set false to skip the check.
-% The check uses Computer Vision Toolbox when available, and preserves a
-% supplied physical top-left corner or a crop with inconclusive OCR evidence.
-%
-% Outputs retain input order/class. info.transform maps ORIGINAL frame XY
-% to output pixel XY; transformPointsInverse maps OCR locations back.
-% info.lineAngle is a measurement, NOT an extra rotation after homography.
-% It can be NaN when perspective is valid but angle estimation is uncertain.
-% info.correctionAngle describes axial deskew. info.orientationRotation is
-% the additional 0 or 180 degrees already included in info.transform.
-% info.orientationScores contains scores for the base crop and its 180-degree
-% rotation, in that order. Requires MATLAB R2022b+ and Image Processing Toolbox.
+%GEOMETRICCORRECTION Deskew and rectify text crops before OCR.
 
 if nargin < 3, options = struct(); end
 validateattributes(frame, {'numeric','logical'}, ...
@@ -83,7 +51,7 @@ for index = 1:size(boxes,1)
     info(index).outputTextPolygon = transformPointsForward( ...
         info(index).transform,info(index).sourcePolygon);
 
-    % 1- Deskew: estimate direction; defer rotation until the final warp.
+    % Estimate text direction.
     localAngleOptions = angleOptions;
     if size(boxes,2) == 5
         localAngleOptions.OriginalSkewHint = double(boxes(index,5));
@@ -94,7 +62,7 @@ for index = 1:size(boxes,1)
     info(index).lineAngle = lineAngle;
     if angleDiagnostics.accepted, info(index).correctionAngle = -lineAngle; end
 
-    % 2- Perspective: actual sign edges in the ORIGINAL frame + context.
+    % Find sign edges in the original frame.
     geometry = struct('accepted',false);
     if enabled
         localPerspective = perspectiveOptions;
@@ -112,7 +80,7 @@ for index = 1:size(boxes,1)
             'reason','Perspective correction is disabled.');
     end
 
-    % 3- Choose ONE mapping and sample original pixels ONCE.
+    % Apply one warp to the original pixels.
     if geometry.accepted
         outputSupport = info(index).sourcePolygon;
         if angleDiagnostics.accepted && ~isempty(angleDiagnostics.supportPoints)
@@ -178,7 +146,7 @@ roi = frame(y1:y2,x1:x2,:);
 end
 
 function [transform,outputSize] = rotationOutput(cropBox,angle)
-% Rotate image coordinates (y down); bound transformed pixel CELL edges.
+% Bound the rotated pixel edges.
 rotation = [cosd(angle) sind(angle) 0; -sind(angle) cosd(angle) 0; 0 0 1];
 mapped = transformPointsForward(projtform2d(rotation), ...
     boxCorners([cropBox(1:2)-0.5 cropBox(3:4)]));
@@ -207,7 +175,7 @@ valid = true;
 end
 
 function corrected = warpOriginal(source,origin,transform,outputSize,backgroundROI)
-% Indexing a crop is not resampling. Map its local XY into original XY.
+% Map crop coordinates to the original frame.
 localTransform = projtform2d(transform.A*translation(origin(1)-1,origin(2)-1));
 background = borderBackground(backgroundROI);
 workImage = double(source)-background;
@@ -242,7 +210,6 @@ elseif resolveOrientation && abs(value.lineAngle) >= 45
     [corrected,value.orientationRotation,value.orientationScores,value.orientationStatus] = ...
         chooseOrientation(corrected);
     if value.orientationRotation == 180
-        % A pixel at (x,y) moves to (width+1-x,height+1-y).
         halfTurn = [-1 0 outputSize(2)+1; 0 -1 outputSize(1)+1; 0 0 1];
         transform = projtform2d(halfTurn*transform.A);
     end
@@ -259,13 +226,12 @@ scores = [NaN NaN];
 status = 'ocr-unavailable';
 if isempty(which('ocr')), return; end
 
-% Work in grayscale for OCR. A half-turn is pixel indexing and needs no warp.
 ocrImage = im2uint8(im2gray(corrected));
 try
     base = ocr(ocrImage,'LayoutAnalysis','line');
     reversed = ocr(ocrImage(end:-1:1,end:-1:1),'LayoutAnalysis','line');
 catch
-    % Geometry remains usable when the optional OCR engine cannot run.
+    % Keep the crop if OCR is unavailable.
     return;
 end
 confidence = {textConfidence(base),textConfidence(reversed)};
@@ -276,8 +242,7 @@ for index = 1:2
     values = confidence{index};
     count = characterCounts(index);
     if count == 0, continue; end
-    % The weakest quarter helps distinguish a consistent read from plausible
-    % upside-down glyphs. Downweight reads much shorter than the alternative.
+    % Penalize weak or short reads.
     lowerTail = mean(mink(values,ceil(count/4)));
     scores(index) = (0.5*mean(values)+0.5*lowerTail)*min(1,count/targetCount);
 end
