@@ -17,7 +17,7 @@ for seed = 1:numel(sizes)
     [~, order] = sort(distances(neighbors));
     neighbors = neighbors(order(1:min(10, numel(order))));
 
-    for neighbor = neighbors'
+    for neighbor = reshape(neighbors, 1, [])
         direction = offsets(neighbor, :) / distances(neighbor);
         origin = centers(seed, :);
         for pass = 1:2

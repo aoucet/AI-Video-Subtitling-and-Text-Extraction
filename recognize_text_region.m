@@ -55,6 +55,32 @@ function R = recognize_text_region(roi, templates, labels, opts)
     else
         R.verifiedRatio = 0;
     end
+    if getOpt(opts, 'returnWords', false)
+        [R.wordBoxes, R.words, R.correctedWords] = ...
+            wordLocations(rawText, correctedText, res.CharacterBoundingBoxes);
+    end
+end
+
+function [boxes, words, corrected] = wordLocations(rawText, correctedText, charBoxes)
+    [first, last] = regexp(rawText, '\S+', 'start', 'end');
+    boxes = zeros(numel(first), 4);
+    words = strings(numel(first), 1);
+    corrected = words;
+    for index = 1:numel(first)
+        span = first(index):last(index);
+        positions = charBoxes(span, :);
+        positions = positions(all(isfinite(positions), 2) & all(positions(:,3:4) > 0, 2), :);
+        if isempty(positions), continue; end
+        low = min(positions(:,1:2), [], 1);
+        high = max(positions(:,1:2) + positions(:,3:4), [], 1);
+        boxes(index, :) = [low, high-low];
+        words(index) = string(rawText(span));
+        corrected(index) = string(correctedText(span));
+    end
+    keep = all(boxes(:,3:4) > 0, 2);
+    boxes = boxes(keep, :);
+    words = words(keep);
+    corrected = corrected(keep);
 end
 
 function v = getOpt(s, name, default)
