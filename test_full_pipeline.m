@@ -54,6 +54,7 @@ end
 fprintf('MATLAB %s | %d screenshot fixtures, %d video fixtures\n', version, numel(images), numel(videos));
 [templates, labels] = make_char_templates();
 results = runChecks("NCC", @() pipelinechecks.ncc(templates, labels));
+results = [results; runChecks("Detection", @pipelinechecks.detection)];
 results = [results; runChecks("Geometry", @pipelinechecks.geometry)];
 fprintf('Running the blank and tilted PARKING fixtures.\n');
 results(end+1, 1) = processFrame(repmat(uint8(237), [300 700]), ...

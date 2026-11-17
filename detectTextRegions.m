@@ -41,6 +41,7 @@ keep = variation <= 0.4 & strokes ./ sizes <= 0.35;
 candidates = vertcat(stats.BoundingBox);
 candidates = candidates(keep, :);
 sizes = sizes(keep);
+strokes = strokes(keep);
 axisRatio = axisRatio(keep);
 variation = variation(keep);
 meanGray = [stats.MeanIntensity]';
@@ -54,6 +55,7 @@ end
     'OverlapThreshold', 0.3, 'RatioType', 'Union', 'NumStrongest', 3000);
 candidates = candidates(selected, :);
 sizes = sizes(selected);
+strokes = strokes(selected);
 axisRatio = axisRatio(selected);
 meanGray = meanGray(selected);
 
@@ -70,6 +72,7 @@ for j = 1:numel(sizes)
 end
 candidates = candidates(survives, :);
 sizes = sizes(survives);
+strokes = strokes(survives);
 axisRatio = axisRatio(survives);
 meanGray = meanGray(survives);
 
@@ -111,6 +114,8 @@ for k = 1:numel(groups)
     % Only mark letters as used after accepting the group.
     used(members) = true;
 end
+
+boxes = [boxes; shortTextPairs(candidates, meanGray, strokes, used, boxes)];
 
 % Scale the boxes back to the original image and keep them inside its edges.
 low = max([1 1], floor(boxes(:, 1:2) ./ scale));
