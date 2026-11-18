@@ -2,11 +2,9 @@
 
 Open the project folder in MATLAB. The suite requires Computer Vision Toolbox and Image Processing Toolbox.
 
-The public benchmark now calls `runTextPipeline`, which uses the updated
-cropping and OCR preparation described in [PIPELINE_CHANGES.md](PIPELINE_CHANGES.md).
-The regular `test_full_pipeline` image/video checks and `SubtitleApp` still
-call the earlier geometry and recognition path. They do not validate the new
-pipeline inside the app. App and real-time integration are still pending.
+`test_full_pipeline("benchmark")` tests `runTextPipeline` on the public datasets.
+The image/video checks and `SubtitleApp` use the earlier geometry and recognition
+functions, so those checks do not test the new pipeline inside the app.
 
 | Command | What it runs |
 | --- | --- |
