@@ -1,7 +1,9 @@
-function boxes = detectTextRegions(frame)
+function [boxes, angles, letterBoxes] = detectTextRegions(frame)
 % Find likely text regions for the deskewing and OCR stages.
 % Input: RGB or grayscale image. Output: [x y width height] in original pixels.
 boxes = zeros(0, 4);
+angles = zeros(0, 1);
+letterBoxes = cell(0, 1);
 
 % 1. Convert to grayscale, resize, adjust contrast and smooth the image.
 originalSize = [size(frame, 1), size(frame, 2)];
@@ -74,7 +76,7 @@ axisRatio = axisRatio(survives);
 meanGray = meanGray(survives);
 
 % 6. Group nearby letters into text lines and check each group.
-groups = groupTextCandidates(candidates, sizes, meanGray);
+[groups, directions] = groupTextCandidates(candidates, sizes, meanGray);
 used = false(size(sizes));
 for k = 1:numel(groups)
     members = groups{k};
@@ -107,6 +109,9 @@ for k = 1:numel(groups)
     padding = 0.12 * median(heights);
     low = min(groupBoxes(:, 1:2), [], 1) - padding;
     high = max(groupBoxes(:, 1:2) + groupBoxes(:, 3:4), [], 1) + padding;
+    originalDirection = directions(k,:) ./ scale;
+    angles(end+1,1) = mod(atan2d(originalDirection(2),originalDirection(1))+90,180)-90;
+    letterBoxes{end+1,1} = groupBoxes ./ [scale scale];
     boxes(end+1, :) = [low, high - low]; %#ok<AGROW>
     % Only mark letters as used after accepting the group.
     used(members) = true;

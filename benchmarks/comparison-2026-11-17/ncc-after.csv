@@ -1,0 +1,7 @@
+Case,Passed,Detail
+reference correlation map,1,"Maximum difference from normxcorr2: 8.29e-15."
+template peak location,1,"Expected (21, 31) and score 1. Observed (21, 31) and 1."
+darker image,1,"Expected (21, 31) and score 1. Observed (21, 31) and 1."
+brighter image,1,"Expected (21, 31) and score 1. Observed (21, 31) and 1."
+A-Z and 0-9 templates,1,"Correct clean glyphs 36/36; noisy glyphs 36/36; bounded noisy scores 1."
+NCC-only EXIT 24,0,"Expected EXIT24. Observed EXJT24."

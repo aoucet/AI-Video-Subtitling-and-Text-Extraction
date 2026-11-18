@@ -1,4 +1,4 @@
-function groups = groupTextCandidates(boxes, sizes, meanGray)
+function [groups, directions] = groupTextCandidates(boxes, sizes, meanGray)
 % Group nearby character candidates into text lines.
 if nargin < 3
     meanGray = zeros(size(sizes));
@@ -6,6 +6,7 @@ end
 centers = boxes(:, 1:2) + boxes(:, 3:4) / 2;
 proposals = {};
 scores = [];
+directions = zeros(0,2);
 
 for seed = 1:numel(sizes)
     offsets = centers - centers(seed, :);
@@ -25,7 +26,7 @@ for seed = 1:numel(sizes)
             along = (centers - origin) * direction';
             across = (centers - origin) * normal';
             heights = boxes(:, 3:4) * abs(normal');
-            sameHeight = heights > 0.5 * heights(seed) & heights < 2 * heights(seed);
+            sameHeight = heights > heights(seed) / 1.5 & heights < 1.5 * heights(seed);
             members = find(sameHeight & abs(meanGray - meanGray(seed)) < 40 & ...
                 abs(across) < 0.4 * heights(seed));
             [positions, order] = sort(along(members));
@@ -57,6 +58,7 @@ for seed = 1:numel(sizes)
 
         if numel(lineMembers) >= 3 && ...
                 median(diff(along(lineMembers))) > 0.3 * median(heights(lineMembers))
+            directions(end+1,:) = direction;
             proposals{end+1, 1} = lineMembers; %#ok<AGROW>
             % Give higher scores to groups that follow a straight line closely.
             residual = abs(across(lineMembers) - ...
@@ -68,4 +70,5 @@ end
 
 [~, order] = sort(scores, 'descend');
 groups = proposals(order);
+directions = directions(order,:);
 end

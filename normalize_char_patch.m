@@ -2,7 +2,7 @@ function P = normalize_char_patch(patch, tsize)
     if size(patch, 3) == 3
         patch = rgb2gray(patch);
     end
-    g = im2double(patch);
+    g = im2double(imadjust(patch));
 
     ink = imbinarize(g);
     if mean(ink(:)) > 0.5

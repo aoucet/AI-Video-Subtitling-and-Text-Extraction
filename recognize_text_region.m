@@ -5,12 +5,17 @@ function R = recognize_text_region(roi, templates, labels, opts)
     fixOcrConf  = getOpt(opts, 'fixOcrConf',  0.50);
     fixNccScore = getOpt(opts, 'fixNccScore', 0.80);
     margin      = getOpt(opts, 'margin',      2);
+    checkConfBelow = getOpt(opts, 'checkConfBelow', Inf);
 
     if size(roi, 3) == 3
         roi = rgb2gray(roi);
     end
 
-    res = ocr(roi, 'LayoutAnalysis', 'line');
+    if isfield(opts, 'ocrResult')
+        res = opts.ocrResult;
+    else
+        res = ocr(roi, 'LayoutAnalysis', 'line');
+    end
 
     % Text, character boxes and confidences share their original positions.
     rawText = res.Text(:).';
@@ -25,11 +30,14 @@ function R = recognize_text_region(roi, templates, labels, opts)
 
     N = numel(chars);
     nccLabel  = repmat(' ', 1, N);
-    nccScore  = zeros(1, N);
+    nccScore  = nan(1, N);
     verified  = false(1, N);
+    checked   = false(1, N);
     corrected = chars;
 
     for i = 1:N
+        if confs(i) >= checkConfBelow, continue; end
+        checked(i) = true;
         patch = imcrop(roi, boxes(i, :));
         [nccLabel(i), nccScore(i)] = verify_char(patch, templates, labels, margin);
 
@@ -50,8 +58,9 @@ function R = recognize_text_region(roi, templates, labels, opts)
     R.nccLabel      = nccLabel;
     R.nccScore      = nccScore;
     R.verified      = verified;
-    if N > 0
-        R.verifiedRatio = mean(verified);
+    R.checked       = checked;
+    if any(checked)
+        R.verifiedRatio = mean(verified(checked));
     else
         R.verifiedRatio = 0;
     end

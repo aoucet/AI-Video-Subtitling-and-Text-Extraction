@@ -3,11 +3,12 @@ close all;
 clc;
 
 % Images to test
+folder = fullfile(fileparts(mfilename('fullpath')), 'dataset', '02_Labeled_Screenshots');
 files = {'V03_F01.jpg', 'V03_F02.jpg', 'V03_F03.jpg'};
 
 for i = 1:length(files)
 
-    frame = imread(files{i});
+    frame = imread(fullfile(folder, files{i}));
 
     boxes = detectTextRegions(frame);
 

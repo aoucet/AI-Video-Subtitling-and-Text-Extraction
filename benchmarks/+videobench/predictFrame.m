@@ -1,39 +1,26 @@
 function result = predictFrame(frame, templates, labels)
-% Read detected lines and map OCR word boxes back into the input frame.
-lineBoxes = detectTextRegions(frame);
-[crops, info] = GeometricCorrection(frame, lineBoxes);
-result = struct('LineBoxes', lineBoxes, 'WordBoxes', zeros(0, 4), ...
-    'Words', strings(0, 1), 'RawWords', strings(0, 1), ...
-    'Deskewed', nnz(strcmp({info.status}, 'deskewed')), ...
-    'Rectified', nnz(strcmp({info.status}, 'perspective-rectified')));
-margin = 20;
-for k = 1:numel(crops)
-    if isempty(crops{k}), continue; end
-    padded = padarray(crops{k}, [margin margin], 'replicate');
-    read = recognize_text_region(padded, templates, labels, struct('returnWords', true));
-    [boxes, keep] = originalBoxes(read.wordBoxes, info(k).transform, margin, size(frame));
-    result.WordBoxes = [result.WordBoxes; boxes];
-    result.Words = [result.Words; read.correctedWords(keep)];
-    result.RawWords = [result.RawWords; read.words(keep)];
+% Run the proposed still-frame pipeline and return words in input pixels.
+[~, texts, details] = runTextPipeline(frame, true, templates, labels);
+result = struct('LineBoxes', zeros(0,4), 'WordBoxes', zeros(0,4), ...
+    'Words', strings(0,1), 'RawWords', strings(0,1), ...
+    'Deskewed', 0, 'Rectified', 0);
+if isempty(details), return; end
+% Line detection is measured before recognition rejects any crops.
+result.LineBoxes = vertcat(details.detectionBox);
+result.Deskewed = nnz(abs([details.angle]) > 1e-6);
+for k = 1:numel(details)
+    if isempty(texts{k}), continue; end
+    reading = details(k).verification;
+    [boxes, keep] = videobench.mapWordBoxes(reading.wordBoxes, ...
+        details(k).mapping, details(k).quad, size(frame));
+    words = reading.correctedWords(keep);
+    raw = reading.words(keep);
+    % Use the same character policy as runTextPipeline, with no label lookup.
+    words = regexprep(words, "[^A-Za-z0-9 \-.:/']", '');
+    raw = regexprep(raw, "[^A-Za-z0-9 \-.:/']", '');
+    valid = strlength(words) > 0;
+    result.WordBoxes = [result.WordBoxes; boxes(valid,:)];
+    result.Words = [result.Words; words(valid)];
+    result.RawWords = [result.RawWords; raw(valid)];
 end
 end
-
-function [boxes, keep] = originalBoxes(boxes, transform, margin, imageSize)
-if isempty(boxes)
-    keep = false(0, 1);
-    return;
-end
-low = boxes(:, 1:2) - margin;
-high = low + boxes(:, 3:4);
-x = [low(:,1), high(:,1), high(:,1), low(:,1)];
-y = [low(:,2), low(:,2), high(:,2), high(:,2)];
-[x, y] = transformPointsInverse(transform, x(:), y(:));
-x = reshape(x, [], 4);
-y = reshape(y, [], 4);
-leftTop = max([min(x, [], 2), min(y, [], 2)], [1 1]);
-rightBottom = min([max(x, [], 2), max(y, [], 2)], imageSize([2 1]));
-boxes = [leftTop, rightBottom - leftTop];
-keep = all(isfinite(boxes), 2) & all(boxes(:,3:4) > 0, 2);
-boxes = boxes(keep, :);
-end
-

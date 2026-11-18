@@ -2,6 +2,12 @@
 
 Open the project folder in MATLAB. The suite requires Computer Vision Toolbox and Image Processing Toolbox.
 
+The public benchmark now calls `runTextPipeline`, which uses the updated
+cropping and OCR preparation described in [PIPELINE_CHANGES.md](PIPELINE_CHANGES.md).
+The regular `test_full_pipeline` image/video checks and `SubtitleApp` still
+call the earlier geometry and recognition path. They do not validate the new
+pipeline inside the app. App and real-time integration are still pending.
+
 | Command | What it runs |
 | --- | --- |
 | `report = test_full_pipeline();` | Geometry and NCC checks, blank and tilted PARKING images, the V15 screenshot, and three frames from V15. |
@@ -20,7 +26,7 @@ Keep the `tests` folder with the project when copying it to MATLAB Drive. The me
 results = test_full_pipeline("benchmark");
 ```
 
-The benchmark evaluates the same detection, geometry, OCR, and NCC functions on five evenly spaced annotated frames per clip. The default uses the 15 YVT test clips and the 13 labeled ICDAR 2013 training clips. Select one split with `struct('Datasets',"YVT")`, `struct('Datasets',"ICDAR2013TRAIN")`, or `struct('Datasets',"ICDAR2013")` for ICDAR test. Set `FramesPerClip` to a different positive integer or `Inf` for every annotated frame.
+The benchmark evaluates the updated still-frame pipeline on five evenly spaced annotated frames per clip. The default uses the 15 YVT test clips and the 13 labeled ICDAR 2013 training clips. Select one split with `struct('Datasets',"YVT")`, `struct('Datasets',"ICDAR2013TRAIN")`, or `struct('Datasets',"ICDAR2013")` for ICDAR test. Set `FramesPerClip` to a different positive integer or `Inf` for every annotated frame.
 
 - **YVT.** Extract the original YVT package under `benchmarks/data/YVT`. The loader uses the supplied VATIC JPEGs for exact frame alignment and scales the 1280 × 720 reference boxes to the JPEG resolution of 720 × 405. The original archive can sit in `benchmarks/data/archives`.
 - **ICDAR 2013.** Extract the labeled Challenge 3 training package under `benchmarks/data/ICDAR2013/train`. The loader selects the original 13 training clips in Table IX of the competition paper. For a future test run, put the 15 original test videos and their frame-level XML labels under `benchmarks/data/ICDAR2013/test`. The official test video ZIP contains lexicons. The scorer requires a separate frame-level XML reference. [Official downloads](https://rrc.cvc.uab.es/?ch=3&com=downloads)
