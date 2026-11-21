@@ -1,0 +1,208 @@
+1
+00:00:00,167 --> 00:00:01,333
+FIRST AID KIT | Emergency number: 4454 0999
+
+2
+00:00:01,333 --> 00:00:01,667
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+3
+00:00:01,667 --> 00:00:01,833
+FIRST AID KIT | Emergency number: 4454 0999 | Focal Point
+
+4
+00:00:01,833 --> 00:00:02,333
+FIRST AID KIT | Emergency number: 4454 0999
+
+5
+00:00:02,333 --> 00:00:02,500
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+6
+00:00:02,500 --> 00:00:02,667
+FIRST AID KIT | Emergency number: 4454 0999
+
+7
+00:00:02,667 --> 00:00:02,833
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+8
+00:00:02,833 --> 00:00:03,167
+FIRST AID KIT | Emergency number: 4454 0999
+
+9
+00:00:03,167 --> 00:00:03,333
+FIRST AID KIT | QF - HSSE directorate | Emergency number: 4454 0999
+
+10
+00:00:03,333 --> 00:00:03,500
+FIRST AID KIT | Emergency number: 4454 0999 | QF - HSSE directorate
+
+11
+00:00:03,500 --> 00:00:03,667
+FIRST AID KIT | Emergency number: 4454 0999
+
+12
+00:00:03,667 --> 00:00:03,833
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+13
+00:00:03,833 --> 00:00:04,000
+FIRST AID KIT | QF  HSSE directorate | Emergency number: 4454 0999 | Focal Point
+
+14
+00:00:04,000 --> 00:00:05,333
+FIRST AID KIT | Emergency number: 4454 0999
+
+15
+00:00:05,333 --> 00:00:05,667
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+16
+00:00:05,667 --> 00:00:05,833
+FIRST AID KIT | Emergency number: 4454 0999 | Focal Point
+
+17
+00:00:05,833 --> 00:00:06,000
+FIRST AID KIT | FAB : 4 | Emergency number: 4454 0999
+
+18
+00:00:06,000 --> 00:00:06,167
+FIRST AID KIT | Emergency number: 4454 0999 | FAB : 4
+
+19
+00:00:06,165 --> 00:00:06,332
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+20
+00:00:06,332 --> 00:00:06,498
+FIRST AID KIT | Emergency number: 4454 0999 | Focal Point
+
+21
+00:00:06,498 --> 00:00:06,998
+FIRST AID KIT | Emergency number: 4454 0999
+
+22
+00:00:06,998 --> 00:00:07,165
+FIRST AID KIT | QF - HSSE directorate | Emergency number: 4454 0999
+
+23
+00:00:07,165 --> 00:00:07,332
+FIRST AID KIT | Emergency number: 4454 0999 | QF - HSSE directorate
+
+24
+00:00:07,332 --> 00:00:07,498
+FIRST AID KIT | FAB : 4G | Emergency number: 4454 0999
+
+25
+00:00:07,498 --> 00:00:07,665
+FIRST AID KIT | QF  HSSE directorate | Emergency number: 4454 0999 | FAB : 4G
+
+26
+00:00:07,665 --> 00:00:07,832
+FIRST AID KIT | Emergency number: 4454 0999 | QF  HSSE directorate
+
+27
+00:00:07,832 --> 00:00:07,998
+FIRST AID KIT | QF  HSSE directorate | Focal Point | Emergency number: 4454 0999
+
+28
+00:00:07,998 --> 00:00:08,165
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+29
+00:00:08,165 --> 00:00:08,332
+FIRST AID KIT | Emergency number: 4454 0999 | Focal Point
+
+30
+00:00:08,332 --> 00:00:08,498
+FIRST AID KIT | Focal Point: | Emergency number: 4454 0999
+
+31
+00:00:08,498 --> 00:00:08,665
+FIRST AID KIT | QF  HSSE directorate | Emergency number: 4454 0999 | Focal Point:
+
+32
+00:00:08,665 --> 00:00:08,832
+FIRST AID KIT | Focal Point: | Emergency number: 4454 0999 | QF  HSSE directorate
+
+33
+00:00:08,832 --> 00:00:08,998
+FIRST AID KIT | QF - HSSE directorate | Emergency number: 4454 0999
+
+34
+00:00:08,998 --> 00:00:09,165
+FIRST AID KIT | Emergency number: 4454 0999 | QF - HSSE directorate
+
+35
+00:00:09,165 --> 00:00:09,998
+FIRST AID KIT | Emergency number: 4454 0999
+
+36
+00:00:09,998 --> 00:00:10,165
+FIRST AID KIT | QF  HSSE directorate | Emergency number: 4454 0999
+
+37
+00:00:10,165 --> 00:00:11,165
+FIRST AID KIT | Emergency number: 4454 0999
+
+38
+00:00:11,165 --> 00:00:11,332
+FIRST AID KIT | QF - HSSE directorate | FAB 4G | Focal Point: | Emergency number: 4454 0999
+
+39
+00:00:11,332 --> 00:00:11,498
+FIRST AID KIT | Emergency number: 4454 0999 | QF - HSSE directorate
+
+40
+00:00:11,498 --> 00:00:11,665
+FIRST AID KIT | Emergency number: 4454 0999
+
+41
+00:00:11,665 --> 00:00:11,832
+FIRST AID KIT | FAB: 4a | Emergency number: 4454 0999
+
+42
+00:00:11,832 --> 00:00:11,998
+FIRST AID KIT | Emergency number: 4454 0999 | FAB: 4a
+
+43
+00:00:11,998 --> 00:00:12,165
+FIRST AID KIT | Emergency number: 4454 0999
+
+44
+00:00:12,165 --> 00:00:12,832
+FIRST AID KIT | QF  HSSE directorate | Emergency number: 4454 0999
+
+45
+00:00:12,832 --> 00:00:12,998
+FIRST AID KIT | Emergency number: 4454 0999 | QF  HSSE directorate
+
+46
+00:00:12,998 --> 00:00:13,332
+FIRST AID KIT | Emergency number: 4454 0999
+
+47
+00:00:13,332 --> 00:00:13,498
+FIRST AID KIT | Focal Point | Emergency number: 4454 0999
+
+48
+00:00:13,498 --> 00:00:13,665
+FIRST AID KIT | QF  HSSE directorate | Focal Point | Emergency number: 4454 0999
+
+49
+00:00:13,665 --> 00:00:13,832
+FIRST AID KIT | Emergency number: 4454 0999 | QF  HSSE directorate | Focal Point
+
+50
+00:00:13,832 --> 00:00:13,998
+FIRST AID KIT | QF  HSSE directorate | Focal Point | Emergency number: 4454 0999
+
+51
+00:00:13,998 --> 00:00:15,165
+FIRST AID KIT | Emergency number: 4454 0999
+
+52
+00:00:15,165 --> 00:00:15,332
+FIRST AID KIT | Focal Point. | Emergency number: 4454 0999
+
